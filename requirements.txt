@@ -1,0 +1,11 @@
+evalutils
+scikit-learn
+SimpleITK
+opencv-python
+gdown
+matplotlib
+batchgenerators
+nvidia-ml-py3
+numba
+scipy
+onnxruntime-gpu
