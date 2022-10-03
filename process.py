@@ -1,19 +1,30 @@
 import SimpleITK
-import os
 import json
-from pathlib import Path
-import pickle
 import numpy as np
-import scipy.special
-from export import save_segmentation_nifti_from_softmax
 import onnxruntime
-from numba import cuda
-from scipy.ndimage.filters import gaussian_filter
-from tqdm import tqdm
+import os
+import pickle
+import scipy.special
 import tensorflow as tf
 from batchgenerators.augmentations.utils import pad_nd_image
+from numba import cuda
+from pathlib import Path
+from scipy.ndimage.filters import gaussian_filter
+from tqdm import tqdm
 
+from export import save_segmentation_nifti_from_softmax
 from preprocessing import GenericPreprocessor
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
+import logging
+
+logging.getLogger('tensorflow').setLevel(logging.FATAL)
+from batchgenerators.augmentations.utils import pad_nd_image
+from Autoinpainting.autoinpaint import self_inpaint
+from Autoinpainting.libs.unet_model import InpaintingUnet
+from Autoinpainting.WriteBackNifti import image_to_nifti
+from Autoinpainting.data_prepare import prepare_2d
+from Autoinpainting.libs.paths_dirs_stuff import get_sub_dirs, creat_dir
 
 isfile = os.path.isfile
 from copy import deepcopy
@@ -336,14 +347,14 @@ class Priornet():
         checkpoint_multi = tf.train.latest_checkpoint(checkpoint_dir)
         img_subjects = get_sub_dirs(img_dir)[1:]
         map_subjects = get_sub_dirs(map_dir)[1:]
-        model_multi = PATAUnet(conv_layer='gconv', load_weights=checkpoint_multi, train_bn=True)
+        model_multi = InpaintingUnet(conv_layer='gconv', load_weights=checkpoint_multi, train_bn=True)
 
         n_subjects = len(img_subjects)
 
-        run_PATA(img_subjects, map_subjects, n_subjects, output_dir,
-                 self.image_size, self.crop_vol_ind_buttom, self.crop_vol_ind_top,
-                 self.n_top_inpaint, self.rad, self.interval_idx, self.n_top_circle_select,
-                 model_multi, self.res_thr, checkpoint_dir)
+        self_inpaint(img_subjects, map_subjects, n_subjects, output_dir,
+                     self.image_size, self.crop_vol_ind_buttom, self.crop_vol_ind_top,
+                     self.n_top_inpaint, self.rad, self.interval_idx, self.n_top_circle_select,
+                     model_multi, self.res_thr, checkpoint_dir)
 
         nifti_subfolders = get_sub_dirs(self.nii_path)[1:]
 
@@ -364,7 +375,7 @@ class Priornet():
         device.reset()
 
     def run_nnUNet_prediction(self):
-        folds = ["0", "1", "2", "3", "4"]
+        folds = ["0", "2", "4"]
 
         config_file = [os.path.join(str(Path(self.nnunet_trained_model)), i.name) for i in
                        Path(str(Path(self.nnunet_trained_model))).iterdir() if i.is_file() and (
